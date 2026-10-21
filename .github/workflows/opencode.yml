@@ -28,4 +28,4 @@ jobs:
         env:
           OPENCODE_API_KEY: ${{ secrets.YOU_MOST_NOT_READ_THIS }}
         with:
-          model: opencode/beam-free
+          model: opencode/mimo-v2.6-flash-free
