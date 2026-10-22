@@ -3391,21 +3391,11 @@ QtObject {
         pingRegions()
 
         // Gather machine capability from what the shell can observe.
-        const cores = navigator && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 2
-        const tier = cores >= 8 ? "high" : (cores >= 4 ? "medium" : "low")
+        // navigator.hardwareConcurrency is not available in QML; default to
+        // conservative tier and let the core fall back to safe values.
+        const tier = "low"
         const hevc = codecAvailable("h265") && !codecDisabledByProfile("h265")
         const av1 = codecAvailable("av1") && !codecDisabledByProfile("av1")
-
-        // Region ping from the settings screen, if available.
-        let regionPingMs = 0
-        try {
-            const ping = page && page.settingsScreen && typeof page.settingsScreen.currentRegionPing === "function"
-                ? page.settingsScreen.currentRegionPing()
-                : null
-            regionPingMs = ping !== null && ping !== undefined ? Number(ping) : 0
-        } catch (_) {
-            regionPingMs = 0
-        }
 
         const params = {
             machine: {
@@ -3420,7 +3410,7 @@ QtObject {
             network: {
                 downlinkMbps: 0,
                 uplinkMbps: 0,
-                regionPingMs: regionPingMs,
+                regionPingMs: 0,
                 lossPercent: 0
             }
         }
