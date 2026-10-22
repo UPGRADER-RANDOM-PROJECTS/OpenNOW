@@ -177,6 +177,47 @@ pub fn recommend_profile(machine: &MachineCapability, network: &NetworkCapabilit
     Recommendation { settings, reasons }
 }
 
+/// Core command entry point for `settings.recommend`.
+/// Parses capability JSON, runs `recommend_profile`, and returns the
+/// proposed settings + reasons without writing anything to the store.
+pub(crate) fn recommend(params: &Value) -> Result<Value, String> {
+    let machine_value = params.get("machine").ok_or("settings.recommend requires machine")?;
+    let network_value = params.get("network").ok_or("settings.recommend requires network")?;
+
+    let tier_str = machine_value.get("tier").and_then(Value::as_str).unwrap_or("low");
+    let tier = match tier_str {
+        "low" => Tier::Low,
+        "medium" => Tier::Medium,
+        "high" => Tier::High,
+        other => return Err(format!("unknown tier: {other}")),
+    };
+
+    let machine = MachineCapability {
+        tier,
+        hardware_decode_hevc: machine_value.get("hardwareDecodeHevc").and_then(Value::as_bool).unwrap_or(false),
+        hardware_decode_av1: machine_value.get("hardwareDecodeAv1").and_then(Value::as_bool).unwrap_or(false),
+        max_decode_width: machine_value.get("maxDecodeWidth").and_then(Value::as_u64).unwrap_or(0) as u32,
+        max_decode_height: machine_value.get("maxDecodeHeight").and_then(Value::as_u64).unwrap_or(0) as u32,
+        max_decode_fps: machine_value.get("maxDecodeFps").and_then(Value::as_u64).unwrap_or(0) as u32,
+        supports_10bit: machine_value.get("supports10bit").and_then(Value::as_bool).unwrap_or(false),
+    };
+
+    let network = NetworkCapability {
+        downlink_mbps: network_value.get("downlinkMbps").and_then(Value::as_f64).unwrap_or(0.0),
+        uplink_mbps: network_value.get("uplinkMbps").and_then(Value::as_f64).unwrap_or(0.0),
+        region_ping_ms: network_value.get("regionPingMs").and_then(Value::as_f64).unwrap_or(0.0),
+        loss_percent: network_value.get("lossPercent").and_then(Value::as_f64).unwrap_or(0.0),
+    };
+
+    let rec = recommend_profile(&machine, &network);
+
+    let settings_obj: Value = rec.settings.into_iter().collect();
+    Ok(json!({
+        "settings": settings_obj,
+        "reasons": rec.reasons,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,5 +337,25 @@ mod tests {
         let rec = recommend_profile(&high_machine(), &network(100.0, 50.0));
         assert!(!rec.reasons.is_empty());
         assert!(rec.reasons.len() >= rec.settings.len());
+    }
+
+    #[test]
+    fn recommend_command_parses_capabilities_and_returns_settings_without_writing() {
+        let params = json!({
+            "machine": {"tier":"medium","hardwareDecodeHevc":true,"hardwareDecodeAv1":false,
+                "maxDecodeWidth":1920,"maxDecodeHeight":1080,"maxDecodeFps":60,"supports10bit":false},
+            "network": {"downlinkMbps":20.0,"uplinkMbps":5.0,"regionPingMs":80.0,"lossPercent":1.0}
+        });
+        let response = recommend(&params).unwrap();
+        assert_eq!(response["settings"]["resolution"], json!("1920x1080"));
+        assert_eq!(response["settings"]["codec"], json!("h265"));
+        assert_eq!(response["settings"]["maxBitrateMbps"], json!(13));
+        assert!(response["reasons"].as_array().unwrap().len() >= 8);
+    }
+
+    #[test]
+    fn recommend_command_rejects_unknown_tier() {
+        let params = json!({"machine": {"tier":"ultra"}, "network": {}});
+        assert!(recommend(&params).is_err());
     }
 }
