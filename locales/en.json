@@ -340,6 +340,13 @@
     "apply": "Apply",
     "dismiss": "Dismiss"
   },
+  "lagReport": {
+    "section": "LAG REPORT",
+    "localStall": "Last session local stall",
+    "localStallYes": "The previous session dropped frames in the local decode path — likely a weak GPU or CPU, not the network.",
+    "localStallNo": "No local decode stalls detected in the previous session.",
+    "sessionVideoDrops": "Session video drops"
+  },
   "graphicsProcessor": {
     "title": "Graphics processor",
     "restartHint": "Automatic uses the first GPU that can hardware-decode and lists each GPU's codecs. The same GPU decodes and displays. Changes apply after restarting OpenNOW.",

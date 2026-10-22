@@ -8,13 +8,18 @@ use crate::EventSender;
 
 pub(crate) struct QueueDropReports {
     pending: HashMap<&'static str, usize>,
+    session: HashMap<&'static str, usize>,
     last_flush: Instant,
 }
+
+const LOCAL_STALL_MEDIA: [&'static str; 4] = ["d3d11-decode", "present", "video-decode", "video-presentation"];
+const LOCAL_STALL_THRESHOLD: usize = 3;
 
 impl QueueDropReports {
     pub(crate) fn new() -> Self {
         Self {
             pending: HashMap::new(),
+            session: HashMap::new(),
             last_flush: Instant::now(),
         }
     }
@@ -23,7 +28,15 @@ impl QueueDropReports {
         if count != 0 {
             let pending = self.pending.entry(media).or_default();
             *pending = pending.saturating_add(count);
+            let session = self.session.entry(media).or_default();
+            *session = session.saturating_add(count);
         }
+    }
+
+    /// True when the local decode/present path has dropped enough frames this
+    /// session to indicate the client machine (not the network) is the stall source.
+    pub(crate) fn local_stall(&self) -> bool {
+        LOCAL_STALL_MEDIA.iter().map(|m| self.session.get(*m).copied().unwrap_or(0)).sum::<usize>() >= LOCAL_STALL_THRESHOLD
     }
 
     pub(crate) fn flush(&mut self, output: &EventSender, now: Instant, final_flush: bool) {
@@ -224,5 +237,27 @@ mod tests {
             assert!(reports[0].contains(field), "{}", reports[0]);
         }
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn decode_and_present_drops_mark_a_local_stall() {
+        let mut reports = QueueDropReports::new();
+        reports.record("d3d11-decode", 4);
+        reports.record("present", 2);
+        assert!(reports.local_stall());
+    }
+
+    #[test]
+    fn network_only_drops_do_not_mark_a_local_stall() {
+        let mut reports = QueueDropReports::new();
+        reports.record("video", 40);
+        assert!(!reports.local_stall());
+    }
+
+    #[test]
+    fn below_threshold_is_not_a_local_stall() {
+        let mut reports = QueueDropReports::new();
+        reports.record("d3d11-decode", 2);
+        assert!(!reports.local_stall());
     }
 }

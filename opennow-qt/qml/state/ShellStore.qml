@@ -392,8 +392,16 @@ QtObject {
     property string sessionReportDropId: ""
     property var streamDropCounts: ({})
     onActiveSessionChanged: {
-        if (!activeSession)
+        if (!activeSession) {
             antiAfkEnabled = false
+            if (dropSessionId) {
+                const drops = streamDropCounts || ({})
+                const localDrops = Number(drops.d3d11Decode || 0) + Number(drops.present || 0)
+                    + Number(drops.videoDecode || 0) + Number(drops.videoPresentation || 0)
+                setSetting("lastSessionLocalStall", localDrops >= 3, "session-end")
+                dropSessionId = ""
+            }
+        }
         if (!activeSession && pendingAccountSwitch)
             Qt.callLater(continuePendingAccountSwitch)
         const sessionId = String(activeSession && activeSession.sessionId || "")

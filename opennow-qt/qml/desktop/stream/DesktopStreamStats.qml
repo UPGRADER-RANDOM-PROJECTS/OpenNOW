@@ -70,6 +70,7 @@ Item {
     function read(key) {
         if (!telemetryActive) return null
         if (key === "packetLossPercent") return ShellStore.connectionHealth.lastLoss
+        if (key === "stablePingMs") return numeric(ShellStore.connectionHealth.stablePingMs)
         const drops = ShellStore.streamDropCounts
         return numeric(drops[key] !== undefined ? drops[key] : live[key])
     }
@@ -135,6 +136,7 @@ Item {
     function metricCards() {
         const cards = [
             {key:"Ping", label:qsTr("PING"), value:read("pingMs"), unit:"ms", field:"pingMs"},
+            {key:"StablePing", label:qsTr("STABLE PING"), value:read("stablePingMs"), unit:"ms", field:"stablePingMs"},
             {key:"Fps", label:qsTr("STREAM FPS"), value:read("framesPerSecond"), unit:"fps", field:"framesPerSecond"},
             {key:"Bitrate", label:qsTr("VIDEO BITRATE"), value:read("bitrateMbps"), unit:"Mbps", field:"bitrateMbps", decimals:1},
             {key:"Receive", label:qsTr("STREAM UDP RECEIVE"), value:read("receiveBitrateMbps"), unit:"Mbps", field:"receiveBitrateMbps", decimals:1},

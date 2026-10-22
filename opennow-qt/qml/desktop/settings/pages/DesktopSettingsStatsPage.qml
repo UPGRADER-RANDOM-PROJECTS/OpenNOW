@@ -102,4 +102,20 @@ Column {
             }
         }
     }
+    DesktopSettingsPanel {
+        width: parent.width; paperStyle: true
+        DesktopSettingsSection { text: qsTr("LAG REPORT") }
+        DesktopSettingsRow {
+            width: parent.width; paperStyle: true; glyph: "alert"; title: qsTr("Last session local stall")
+            description: ShellStore.settings.lastSessionLocalStall
+                ? qsTr("The previous session dropped frames in the local decode path — likely a weak GPU or CPU, not the network.")
+                : qsTr("No local decode stalls detected in the previous session.")
+            showDivider: false
+        }
+        DesktopSettingsRow {
+            width: parent.width; paperStyle: true; glyph: "speed"; title: qsTr("Session video drops")
+            description: String(ShellStore.streamDropCounts.videoDropCount || 0) + " " + qsTr("frames")
+            showDivider: false
+        }
+    }
 }
