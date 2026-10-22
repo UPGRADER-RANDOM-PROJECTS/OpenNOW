@@ -23,6 +23,7 @@ mod persistent_storage;
 mod proxy;
 mod push_registry;
 mod queue_servers;
+mod recommendation;
 mod reports;
 mod requests;
 mod server_vpc_cache;
