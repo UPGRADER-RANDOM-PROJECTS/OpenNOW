@@ -1187,6 +1187,7 @@ fn defaults() -> Map<String, Value> {
         "sessionProxyEnabled":false, "sessionProxyUrl":"", "clipboardPaste":false, "networkTest":false,
         "suppressAwdlWhileStreaming":false,
         "lastSessionLocalStall":false,
+        "autoSelectRegion":false,
         "enableGyroscopeControls":false, "steamControllerCompatibilityMode":false,
         "nativeCursorOverlay":true, "mouseSensitivity":1, "mouseAcceleration":1,
         "shortcutToggleStats":"Ctrl+N", "shortcutTogglePointerLock":"F8",

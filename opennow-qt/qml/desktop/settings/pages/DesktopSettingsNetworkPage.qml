@@ -45,6 +45,24 @@ Column {
             }
         }
         DesktopSettingsRow {
+            width: parent.width; paperStyle: true; glyph: "globe"; title: qsTr("Auto-select best region")
+            description: qsTr("Choose the closest streaming region with the lowest ping before each session. Useful when GeForce NOW is not available in your country.")
+            showDivider: false
+            DesktopSettingsToggle {
+                objectName: "autoSelectRegionToggle"
+                checked: ShellStore.autoSelectRegion
+                enabled: !ShellStore.selectingBestRegion
+                Accessible.name: qsTr("Auto-select best region")
+                onValueChangedByUser: value => ShellStore.autoSelectRegion = value
+            }
+        }
+        DesktopSettingsRow {
+            visible: ShellStore.selectingBestRegion
+            width: parent.width; paperStyle: true; glyph: "speed"; title: qsTr("Selecting best region…")
+            description: qsTr("Measuring all regions and picking the one with the lowest ping.")
+            showDivider: false
+        }
+        DesktopSettingsRow {
             visible: ShellStore.queueSelectorFreeTier
             width: parent.width; paperStyle: true; glyph: "globe"
             title: qsTr("Free-tier queue selector")

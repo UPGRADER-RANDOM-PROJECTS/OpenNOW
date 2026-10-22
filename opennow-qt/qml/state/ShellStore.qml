@@ -545,6 +545,8 @@ QtObject {
     property var recommendedProfileProposal: null
     property bool recommendationBusy: false
     property string recommendationError: ""
+    property bool autoSelectRegion: false
+    property bool selectingBestRegion: false
 
     property Connections launchInspectionResponses: Connections {
         target: CoreClient
@@ -3429,7 +3431,52 @@ QtObject {
         for (const key of Object.keys(settings)) {
             setSetting(key, settings[key], "recommended")
         }
+        // If auto region is on, pick the closest region after applying the profile.
+        if (ShellStore.autoSelectRegion) {
+            selectBestRegion()
+        }
         recommendedProfileProposal = null
+    }
+
+    function selectBestRegion() {
+        if (selectingBestRegion) return
+        selectingBestRegion = true
+        refreshRegions()
+        pingRegions()
+        // Poll until region ping finishes, then pick the lowest-ping region.
+        selectBestRegionTimer.start()
+    }
+
+    function applySelectedBestRegion() {
+        const regions = ShellStore.regions || []
+        const results = ShellStore.regionPingResults || ({})
+        let bestUrl = ""
+        let bestPing = Infinity
+        for (let i = 0; i < regions.length; ++i) {
+            const url = regions[i].url
+            const ping = Number(results[url])
+            if (Number.isFinite(ping) && ping < bestPing) {
+                bestPing = ping
+                bestUrl = url
+            }
+        }
+        if (bestUrl) {
+            setSetting("region", bestUrl, "recommended")
+        }
+        selectingBestRegion = false
+        selectBestRegionTimer.stop()
+    }
+
+    Timer {
+        id: selectBestRegionTimer
+        interval: 500
+        repeat: true
+        running: false
+        onTriggered: {
+            if (!ShellStore.regionPingBusy && !ShellStore.regionPingPending) {
+                applySelectedBestRegion()
+            }
+        }
     }
 
     function resetSettings() {

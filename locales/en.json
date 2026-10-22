@@ -347,6 +347,12 @@
     "localStallNo": "No local decode stalls detected in the previous session.",
     "sessionVideoDrops": "Session video drops"
   },
+  "autoRegion": {
+    "title": "Auto-select best region",
+    "description": "Choose the closest streaming region with the lowest ping before each session. Useful when GeForce NOW is not available in your country.",
+    "selecting": "Selecting best region…",
+    "selectingDetail": "Measuring all regions and picking the one with the lowest ping."
+  },
   "graphicsProcessor": {
     "title": "Graphics processor",
     "restartHint": "Automatic uses the first GPU that can hardware-decode and lists each GPU's codecs. The same GPU decodes and displays. Changes apply after restarting OpenNOW.",
