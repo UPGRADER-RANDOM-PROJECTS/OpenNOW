@@ -33,6 +33,12 @@ impl QueueDropReports {
         }
     }
 
+    /// Clear per-session drop counters so a long-running client does not keep
+    /// reporting a local stall from drops that happened in an old session.
+    pub(crate) fn reset_session(&mut self) {
+        self.session.clear();
+    }
+
     /// True when the local decode/present path has dropped enough frames this
     /// session to indicate the client machine (not the network) is the stall source.
     pub(crate) fn local_stall(&self) -> bool {

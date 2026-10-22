@@ -396,8 +396,11 @@ QtObject {
             antiAfkEnabled = false
             if (dropSessionId) {
                 const drops = streamDropCounts || ({})
-                const localDrops = Number(drops.d3d11Decode || 0) + Number(drops.present || 0)
-                    + Number(drops.videoDecode || 0) + Number(drops.videoPresentation || 0)
+                // streamDropCounts only carries aggregate video drops from the
+                // streamer; per-stage decode/present drops live in the native
+                // queue-dropped events, so use videoDropCount as the best local
+                // stall signal available on the Qt side.
+                const localDrops = Number(drops.videoDropCount || 0)
                 setSetting("lastSessionLocalStall", localDrops >= 3, "session-end")
                 dropSessionId = ""
             }
@@ -3386,13 +3389,11 @@ QtObject {
         recommendationError = ""
         recommendedProfileProposal = null
 
-        // Refresh regions and ping so the core has fresh region latency data.
-        refreshRegions()
-        pingRegions()
-
         // Gather machine capability from what the shell can observe.
-        // navigator.hardwareConcurrency is not available in QML; default to
-        // conservative tier and let the core fall back to safe values.
+        // navigator.hardwareConcurrency is not available in QML, so we stay on
+        // the conservative "low" tier and let the core fall back to safe values.
+        // Region ping is intentionally not measured here because pingRegions()
+        // is asynchronous and its result would not be ready before this command.
         const tier = "low"
         const hevc = codecAvailable("h265") && !codecDisabledByProfile("h265")
         const av1 = codecAvailable("av1") && !codecDisabledByProfile("av1")
