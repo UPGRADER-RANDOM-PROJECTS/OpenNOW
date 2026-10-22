@@ -531,6 +531,10 @@ QtObject {
         selectedGame = Object.assign({}, target.game, {selectedVariantIndex:index})
         launchSelectedGame(false)
     }
+    property var recommendedProfileProposal: null
+    property bool recommendationBusy: false
+    property string recommendationError: ""
+
     property Connections launchInspectionResponses: Connections {
         target: CoreClient
         function onResponseReceived(id, result) {
@@ -804,6 +808,7 @@ QtObject {
     property bool audioOutputDevicesBusy: false
     property string audioOutputDevicesError: ""
     property string audioOutputDevicesRequestId: ""
+    property string recommendationRequestId: ""
     property Timer audioOutputDevicesTimeout: Timer {
         interval: 10000
         onTriggered: {
@@ -3367,6 +3372,67 @@ QtObject {
         return settingsOwner.setSetting(key, value, source)
     }
 
+    function recommendProfile() {
+        if (recommendationBusy) return
+        recommendationBusy = true
+        recommendationError = ""
+        recommendedProfileProposal = null
+
+        // Refresh regions and ping so the core has fresh region latency data.
+        refreshRegions()
+        pingRegions()
+
+        // Gather machine capability from what the shell can observe.
+        const cores = navigator && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 2
+        const tier = cores >= 8 ? "high" : (cores >= 4 ? "medium" : "low")
+        const hevc = codecAvailable("h265") && !codecDisabledByProfile("h265")
+        const av1 = codecAvailable("av1") && !codecDisabledByProfile("av1")
+
+        // Region ping from the settings screen, if available.
+        let regionPingMs = 0
+        try {
+            const ping = page && page.settingsScreen && typeof page.settingsScreen.currentRegionPing === "function"
+                ? page.settingsScreen.currentRegionPing()
+                : null
+            regionPingMs = ping !== null && ping !== undefined ? Number(ping) : 0
+        } catch (_) {
+            regionPingMs = 0
+        }
+
+        const params = {
+            machine: {
+                tier: tier,
+                hardwareDecodeHevc: hevc,
+                hardwareDecodeAv1: av1,
+                maxDecodeWidth: 1920,
+                maxDecodeHeight: 1080,
+                maxDecodeFps: 60,
+                supports10bit: false
+            },
+            network: {
+                downlinkMbps: 0,
+                uplinkMbps: 0,
+                regionPingMs: regionPingMs,
+                lossPercent: 0
+            }
+        }
+
+        recommendationRequestId = sendNativeCommand("settings.recommend", params, "settings.recommend")
+        if (recommendationRequestId === "") {
+            recommendationBusy = false
+            recommendationError = lastError || qsTr("The core rejected the recommendation request")
+        }
+    }
+
+    function applyRecommendedProfile() {
+        if (!recommendedProfileProposal) return
+        const settings = recommendedProfileProposal.settings || ({})
+        for (const key of Object.keys(settings)) {
+            setSetting(key, settings[key], "recommended")
+        }
+        recommendedProfileProposal = null
+    }
+
     function resetSettings() {
         return settingsOwner.resetSettings()
     }
@@ -3419,6 +3485,19 @@ QtObject {
             } else {
                 audioOutputDevices = []
                 audioOutputDevicesError = String(response.message || qsTr("Could not list audio output devices"))
+            }
+            return
+        }
+        if (pending.operation === "settings.recommend") {
+            recommendationRequestId = ""
+            recommendationBusy = false
+            if (responseType === "settings.recommend" && response.settings) {
+                recommendedProfileProposal = {
+                    settings: response.settings,
+                    reasons: response.reasons || []
+                }
+            } else {
+                recommendationError = String(response.message || qsTr("The recommendation request failed"))
             }
             return
         }
@@ -4325,6 +4404,10 @@ QtObject {
                 accountServicesOwner.failRegions(message)
             } else if (requestId === root.regionPingRequestId) {
                 accountServicesOwner.failRegionPing(message)
+            } else if (requestId === root.recommendationRequestId) {
+                root.recommendationRequestId = ""
+                root.recommendationBusy = false
+                root.recommendationError = message
             } else if (requestId === root.accountsRequestId) {
                 root.accountsRequestId = ""
                 root.accountsLoaded = true

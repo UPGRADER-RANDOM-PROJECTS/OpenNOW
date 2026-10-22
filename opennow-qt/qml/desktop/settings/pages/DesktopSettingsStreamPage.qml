@@ -105,6 +105,37 @@ Column {
             value: page.settingsScreen.valueSetting("colorQuality", "8bit_420")
             onSelected: value => page.settingsScreen.setChoice("colorQuality", value)
         }
+        DesktopSettingsPanel {
+            width: parent.width; paperStyle: true
+            DesktopSettingsSection { text: qsTr("LOW-LATENCY PROFILE") }
+            DesktopSettingsRow {
+                width: parent.width; paperStyle: true; glyph: "rocket"; title: qsTr("Recommended")
+                description: ShellStore.recommendationError || qsTr("Measure your connection and device, then apply a profile built for low ping and steady frames.")
+                showDivider: false
+                DesktopSettingsButton {
+                    objectName: "recommendedProfileButton"
+                    text: ShellStore.recommendationBusy ? qsTr("Measuring…") : qsTr("Recommended")
+                    enabled: !ShellStore.recommendationBusy
+                    onClicked: ShellStore.recommendProfile()
+                }
+            }
+            DesktopSettingsRow {
+                visible: ShellStore.recommendedProfileProposal !== null
+                width: parent.width; paperStyle: true; glyph: "chip"; title: qsTr("Suggested profile")
+                description: ShellStore.recommendedProfileProposal.reasons.join("  ·  ")
+                showDivider: false
+                DesktopSettingsButton {
+                    objectName: "applyRecommendedProfileButton"
+                    text: qsTr("Apply")
+                    onClicked: ShellStore.applyRecommendedProfile()
+                }
+                DesktopSettingsButton {
+                    objectName: "dismissRecommendedProfileButton"
+                    text: qsTr("Dismiss")
+                    onClicked: ShellStore.recommendedProfileProposal = null
+                }
+            }
+        }
     }
     DesktopSettingsDlssOverrides {
         width: parent.width

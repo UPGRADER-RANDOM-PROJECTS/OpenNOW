@@ -331,6 +331,15 @@
     "title": "Save bandwidth",
     "description": "Lets the server trade resolution and image quality for a steadier frame rate when your connection cannot sustain the selected profile. Off requests no dynamic adjustment. Applies to new sessions."
   },
+  "recommendedProfile": {
+    "section": "LOW-LATENCY PROFILE",
+    "title": "Recommended",
+    "measuring": "Measuring…",
+    "description": "Measure your connection and device, then apply a profile built for low ping and steady frames.",
+    "suggestedTitle": "Suggested profile",
+    "apply": "Apply",
+    "dismiss": "Dismiss"
+  },
   "graphicsProcessor": {
     "title": "Graphics processor",
     "restartHint": "Automatic uses the first GPU that can hardware-decode and lists each GPU's codecs. The same GPU decodes and displays. Changes apply after restarting OpenNOW.",
