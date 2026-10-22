@@ -1174,7 +1174,7 @@ fn defaults() -> Map<String, Value> {
         "onboardingCompleted":false,
         "resolution":"1920x1080", "aspectRatio":"16:9", "posterSizeScale":1.05,
         "fps":60, "frameGeneration":"off", "upscaling":"off", "upscalingSharpness":10, "upscalingDenoise":0,
-        "maxBitrateMbps":75, "saveBandwidth":false, "recordingBitrateMbps":null,
+        "maxBitrateMbps":75, "saveBandwidth":false, "dynamicRateControl":true, "recordingBitrateMbps":null,
         "recordingResolution":"720p", "recordingFps":30, "streamClientMode":"native",
         "replayBufferEnabled":false, "replayBufferSeconds":30, "replayBufferMemoryMiB":256,
         "nativeVideoBackend":"auto", "nativeStreamerExecutablePath":"", "audioOutputDevice":"",

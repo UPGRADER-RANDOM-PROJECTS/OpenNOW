@@ -1577,7 +1577,14 @@ fn build_announce(context: &SessionContext, params: AnnounceParams<'_>) -> Strin
         "a=x-nv-vqos[0].fec.repairMinPercent:20".to_owned(),
         "a=x-nv-vqos[0].fec.repairMaxPercent:35".to_owned(),
         "a=x-nv-vqos[0].bllFec.enable:0".to_owned(),
-        "a=x-nv-vqos[0].drc.enable:0".to_owned(),
+        format!(
+            "a=x-nv-vqos[0].drc.enable:{}",
+            if context.settings.get("dynamicRateControl").and_then(Value::as_bool).unwrap_or(true) {
+                1
+            } else {
+                0
+            }
+        ),
         format!("a=x-nv-vqos[0].dfc.adjustResAndFps:{adjust_res_and_fps}"),
         "a=x-nv-vqos[0].calculateAvgVideoStreamingBitrate:1".to_owned(),
         format!("a=x-nv-vqos[0].bw.maximumBitrateKbps:{bitrate}"),
@@ -3085,8 +3092,59 @@ mod tests {
             );
             assert!(sdp.contains(&format!("a=x-nv-vqos[0].dynamicStreamingMode:{policy}\r\n")));
             assert!(sdp.contains(&format!("a=x-nv-vqos[0].dfc.adjustResAndFps:{adjust}\r\n")));
-            assert!(sdp.contains("a=x-nv-vqos[0].drc.enable:0\r\n"));
+            assert!(sdp.contains("a=x-nv-vqos[0].drc.enable:1\r\n"));
         }
+    }
+
+    #[test]
+    fn announce_drc_enabled_by_default() {
+        let value = context();
+        let sdp = build_announce(
+            &value,
+            AnnounceParams {
+                stream: stream_config(&value),
+                key: &"01".repeat(32),
+                key_id: 7,
+                port: 49006,
+                address: "192.0.2.10",
+                ufrag: "abcd",
+                password: "abcdefghijklmnopqrstuv",
+                fingerprint: "AA:BB",
+                video_port: 5004,
+                video_packet_size: 1280,
+                rtcp_on_sctp: true,
+                microphone_available: false,
+                qos_timings_v5: false,
+                unified_socket: false,
+            },
+        );
+        assert!(sdp.contains("a=x-nv-vqos[0].drc.enable:1\r\n"));
+    }
+
+    #[test]
+    fn announce_drc_can_be_disabled() {
+        let mut value = context();
+        value.settings["dynamicRateControl"] = json!(false);
+        let sdp = build_announce(
+            &value,
+            AnnounceParams {
+                stream: stream_config(&value),
+                key: &"01".repeat(32),
+                key_id: 7,
+                port: 49006,
+                address: "192.0.2.10",
+                ufrag: "abcd",
+                password: "abcdefghijklmnopqrstuv",
+                fingerprint: "AA:BB",
+                video_port: 5004,
+                video_packet_size: 1280,
+                rtcp_on_sctp: true,
+                microphone_available: false,
+                qos_timings_v5: false,
+                unified_socket: false,
+            },
+        );
+        assert!(sdp.contains("a=x-nv-vqos[0].drc.enable:0\r\n"));
     }
 
     #[test]
