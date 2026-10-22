@@ -93,6 +93,12 @@ pub fn recommend_profile(machine: &MachineCapability, network: &NetworkCapabilit
         let capped = (downlink * DOWNLINK_HEADROOM).floor() as u32;
         bitrate = bitrate.min(capped);
     }
+    // Factor in packet loss: reduce bitrate cap if there was loss in the previous session.
+    if network.loss_percent > 0.0 {
+        // 1% estimated loss = 5% bitrate reduction, capped at 50% reduction.
+        let reduction = (network.loss_percent * 5.0).clamp(0.0, 50.0) / 100.0;
+        bitrate = (bitrate as f64 * (1.0 - reduction)) as u32;
+    }
     bitrate = bitrate.max(BITRATE_FLOOR_MBPS).min(BITRATE_CEILING_MBPS);
 
     settings.push(("maxBitrateMbps".to_string(), json!(bitrate)));

@@ -402,6 +402,16 @@ QtObject {
                 // stall signal available on the Qt side.
                 const localDrops = Number(drops.videoDropCount || 0)
                 setSetting("lastSessionLocalStall", localDrops >= 3, "session-end")
+                setSetting("lastSessionVideoDrops", localDrops, "session-end")
+
+                // Auto-reduce bitrate after video drops to prevent bufferbloat.
+                // If we saw 5+ dropped frames in the session, lower maxBitrateMbps
+                // by 30% (floor 6 Mbps) so the next session is more stable.
+                if (localDrops >= 5) {
+                    const currentBitrate = Number(settings.maxBitrateMbps || 25)
+                    const reduced = Math.max(6, Math.floor(currentBitrate * 0.7))
+                    setSetting("maxBitrateMbps", reduced, "session-end")
+                }
                 dropSessionId = ""
             }
         }
@@ -3400,6 +3410,10 @@ QtObject {
         const hevc = codecAvailable("h265") && !codecDisabledByProfile("h265")
         const av1 = codecAvailable("av1") && !codecDisabledByProfile("av1")
 
+        // Estimate loss from previous session drops: each drop ≈ 5% loss, capped at 25%.
+        const prevDrops = Number(settings.lastSessionVideoDrops || 0)
+        const lossPercent = Math.min(prevDrops * 5, 25)
+
         const params = {
             machine: {
                 tier: tier,
@@ -3414,7 +3428,7 @@ QtObject {
                 downlinkMbps: 0,
                 uplinkMbps: 0,
                 regionPingMs: 0,
-                lossPercent: 0
+                lossPercent: lossPercent
             }
         }
 
