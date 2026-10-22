@@ -110,6 +110,52 @@ const FRAME_ACK_RECORD_LEN: usize = 4 + FRAME_ACK_PAYLOAD_LEN;
 const STREAM_PING_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_PENDING_STREAM_PINGS: usize = 64;
 
+/// Bounded, time-windowed RTT samples used for recovery timing.
+///
+/// `latest` preserves the current (possibly spiked) sample for on-screen
+/// ping display. `samples` retains a bounded window so `stable_rtt` can
+/// report the path floor instead of transient spikes — a 200 ms spike must
+/// not stretch NACK retry intervals or IDR backstops.
+const PING_WINDOW_SAMPLES: usize = 8;
+const PING_WINDOW_TTL: Duration = Duration::from_secs(5);
+
+#[derive(Debug, Default)]
+struct PingWindow {
+    latest: Option<(Instant, Duration)>,
+    samples: VecDeque<(Instant, Duration)>,
+}
+
+impl PingWindow {
+    fn push(&mut self, now: Instant, elapsed: Duration) {
+        self.latest = Some((now, elapsed));
+        self.samples.push_back((now, elapsed));
+        while self.samples.len() > PING_WINDOW_SAMPLES {
+            self.samples.pop_front();
+        }
+        while let Some((sent, _)) = self.samples.front() {
+            if now.saturating_duration_since(*sent) >= PING_WINDOW_TTL {
+                self.samples.pop_front();
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn current(&self, now: Instant) -> Option<Duration> {
+        self.latest
+            .filter(|(sent, _)| now.saturating_duration_since(*sent) < STREAM_PING_TIMEOUT)
+            .map(|(_, elapsed)| elapsed)
+    }
+
+    fn stable(&self, now: Instant) -> Option<Duration> {
+        self.samples
+            .iter()
+            .filter(|(sent, _)| now.saturating_duration_since(*sent) < STREAM_PING_TIMEOUT)
+            .map(|(_, elapsed)| *elapsed)
+            .min()
+    }
+}
+
 #[derive(Default)]
 struct StreamPingTracker {
     pending: VecDeque<([u8; 12], Instant)>,
@@ -641,9 +687,9 @@ pub struct NvstFeedbackState {
     authenticated_transport_ready: AtomicBool,
     video_receive_bytes: AtomicU64,
     reception_timing: Mutex<ReceptionTiming>,
-    ice_ping: Mutex<Option<(Instant, Duration)>>,
-    video_ping: Mutex<Option<(Instant, Duration)>>,
-    bundle_ping: Mutex<Option<(Instant, Duration)>>,
+    ice_ping: Mutex<PingWindow>,
+    video_ping: Mutex<PingWindow>,
+    bundle_ping: Mutex<PingWindow>,
     /// Remains set through send attempts until assembly receives a fresh keyframe.
     keyframe_needed: AtomicBool,
     pub(crate) frame_invalidation: FrameInvalidationFeedback,
@@ -673,9 +719,9 @@ impl Default for NvstFeedbackState {
             authenticated_transport_ready: AtomicBool::new(false),
             video_receive_bytes: AtomicU64::new(0),
             reception_timing: Mutex::new(ReceptionTiming::default()),
-            ice_ping: Mutex::new(None),
-            video_ping: Mutex::new(None),
-            bundle_ping: Mutex::new(None),
+            ice_ping: Mutex::new(PingWindow::default()),
+            video_ping: Mutex::new(PingWindow::default()),
+            bundle_ping: Mutex::new(PingWindow::default()),
             keyframe_needed: AtomicBool::new(false),
             frame_invalidation: FrameInvalidationFeedback::default(),
             pending_nacks: Mutex::new(BTreeMap::new()),
@@ -806,12 +852,14 @@ impl NvstFeedbackState {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let Some(pair) = pair else {
             *previous_responses = 0;
-            *sample = None;
+            sample.latest = None;
             return;
         };
         if pair.responses_received != *previous_responses {
             *previous_responses = pair.responses_received;
-            *sample = pair.current_round_trip_time.map(|elapsed| (now, elapsed));
+            if let Some(elapsed) = pair.current_round_trip_time {
+                sample.push(now, elapsed);
+            }
         }
     }
 
@@ -821,13 +869,34 @@ impl NvstFeedbackState {
         } else {
             &self.bundle_ping
         };
-        *sample
+        sample
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((now, elapsed));
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(now, elapsed);
     }
 
+    /// Current (possibly spiked) RTT — used for on-screen ping display.
     pub fn ping_ms(&self, now: Instant) -> Option<f64> {
         self.ping(now).map(|elapsed| elapsed.as_secs_f64() * 1000.0)
+    }
+
+    /// Filtered RTT floor — used for NACK retry timing so a transient spike
+    /// does not stretch recovery intervals.
+    pub fn stable_rtt(&self, now: Instant) -> Option<Duration> {
+        [&self.ice_ping, &self.video_ping, &self.bundle_ping]
+            .into_iter()
+            .filter_map(|sample| {
+                sample
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .stable(now)
+            })
+            .min()
+    }
+
+    /// Filtered RTT in milliseconds.
+    pub fn stable_ping_ms(&self, now: Instant) -> Option<f64> {
+        self.stable_rtt(now).map(|elapsed| elapsed.as_secs_f64() * 1000.0)
     }
 
     fn ping(&self, now: Instant) -> Option<Duration> {
@@ -837,10 +906,7 @@ impl NvstFeedbackState {
                 sample
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .filter(|(received, _)| {
-                        now.saturating_duration_since(*received) < STREAM_PING_TIMEOUT
-                    })
-                    .map(|(_, elapsed)| elapsed)
+                    .current(now)
             })
     }
 
@@ -3066,7 +3132,7 @@ fn send_pending_nack(
     if rtc.channel(channel).is_none() {
         return;
     }
-    let retry_rtt = mjolnir.then(|| feedback.ping(now).unwrap_or(DEFAULT_NACK_RTT));
+    let retry_rtt = mjolnir.then(|| feedback.stable_rtt(now).unwrap_or(DEFAULT_NACK_RTT));
     let Some((first, last)) = feedback.take_nack(now, retry_rtt) else {
         return;
     };
@@ -14656,6 +14722,47 @@ mod tests {
                 u8::from_str_radix(std::str::from_utf8(chunk).expect("hex"), 16).expect("hex")
             })
             .collect()
+    }
+
+    #[test]
+    fn a_ping_spike_does_not_stretch_the_stable_rtt() {
+        let feedback = config().feedback();
+        let now = Instant::now();
+        feedback.publish_ping(false, now, Duration::from_millis(20));
+        assert_eq!(feedback.stable_rtt(now), Some(Duration::from_millis(20)));
+        // A 200 ms spike must not move the stable RTT used for NACK timing
+        feedback.publish_ping(false, now + Duration::from_millis(1), Duration::from_millis(200));
+        let after_spike = feedback.stable_rtt(now + Duration::from_millis(2));
+        assert_eq!(after_spike, Some(Duration::from_millis(20)));
+        // Current ping still reports the spike honestly
+        assert_eq!(feedback.ping_ms(now + Duration::from_millis(2)), Some(200.0));
+    }
+
+    #[test]
+    fn stable_rtt_falls_back_to_current_sample_when_window_has_one_entry() {
+        let feedback = config().feedback();
+        let now = Instant::now();
+        feedback.publish_ping(false, now, Duration::from_millis(35));
+        assert_eq!(feedback.stable_rtt(now), Some(Duration::from_millis(35)));
+    }
+
+    #[test]
+    fn expired_samples_leave_the_stable_window() {
+        let feedback = config().feedback();
+        let now = Instant::now();
+        feedback.publish_ping(false, now, Duration::from_millis(35));
+        let later = now + PING_WINDOW_TTL + Duration::from_secs(1);
+        assert_eq!(feedback.stable_rtt(later), None);
+    }
+
+    #[test]
+    fn stable_rtt_takes_the_min_across_all_ping_sources() {
+        let feedback = config().feedback();
+        let now = Instant::now();
+        feedback.publish_ping(true, now, Duration::from_millis(100)); // video
+        feedback.publish_ping(false, now + Duration::from_millis(1), Duration::from_millis(25)); // bundle
+        feedback.update_ice_ping(None, &mut 0, now + Duration::from_millis(2)); // clears ice
+        assert_eq!(feedback.stable_rtt(now + Duration::from_millis(3)), Some(Duration::from_millis(25)));
     }
 }
 
