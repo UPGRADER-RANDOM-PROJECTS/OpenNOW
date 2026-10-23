@@ -2,7 +2,7 @@
 //! No I/O, no device probes — just deterministic math over capabilities
 //! supplied by the Qt shell. Unit-testable with `cargo test` in CI.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Machine tier reported by the Qt shell (capability gathering).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,10 +38,10 @@ pub struct MachineCapability {
 /// Network capability measured by the shell. Downlink is the congestion axis.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NetworkCapability {
-    pub downlink_mbps: f64,   // 0.0 = unknown
-    pub uplink_mbps: f64,     // 0.0 = unknown
-    pub region_ping_ms: f64,  // 0.0 = unknown
-    pub loss_percent: f64,    // 0.0 = unknown
+    pub downlink_mbps: f64,  // 0.0 = unknown
+    pub uplink_mbps: f64,    // 0.0 = unknown
+    pub region_ping_ms: f64, // 0.0 = unknown
+    pub loss_percent: f64,   // 0.0 = unknown
 }
 
 /// Output of the recommendation engine: settings to apply and human-readable reasons.
@@ -81,13 +81,22 @@ fn resolution_min_downlink(resolution: &str) -> f64 {
 
 fn parse_width_height(s: &str) -> (u32, u32) {
     let mut parts = s.split('x');
-    let w = parts.next().and_then(|p| p.parse::<u32>().ok()).unwrap_or(0);
-    let h = parts.next().and_then(|p| p.parse::<u32>().ok()).unwrap_or(0);
+    let w = parts
+        .next()
+        .and_then(|p| p.parse::<u32>().ok())
+        .unwrap_or(0);
+    let h = parts
+        .next()
+        .and_then(|p| p.parse::<u32>().ok())
+        .unwrap_or(0);
     (w, h)
 }
 
 /// Recommend a stream profile deterministically from machine + network capability.
-pub fn recommend_profile(machine: &MachineCapability, network: &NetworkCapability) -> Recommendation {
+pub fn recommend_profile(
+    machine: &MachineCapability,
+    network: &NetworkCapability,
+) -> Recommendation {
     let mut settings: Vec<(String, Value)> = Vec::new();
     let mut reasons: Vec<String> = Vec::new();
 
@@ -117,7 +126,11 @@ pub fn recommend_profile(machine: &MachineCapability, network: &NetworkCapabilit
         "bitrate {} Mbps: tier cap {} Mbps, {}",
         bitrate,
         tier_bitrate_cap(machine.tier),
-        if downlink.is_finite() { "downlink headroom 65%" } else { "downlink unknown, tier cap kept" }
+        if downlink.is_finite() {
+            "downlink headroom 65%"
+        } else {
+            "downlink unknown, tier cap kept"
+        }
     ));
 
     // 3. Resolution: start at tier cap, step down the ladder while decode/downlink constrain.
@@ -126,7 +139,8 @@ pub fn recommend_profile(machine: &MachineCapability, network: &NetworkCapabilit
     let mut tier_idx = ladder.iter().position(|&r| r == resolution).unwrap_or(2);
     while tier_idx + 1 < ladder.len() {
         let next = ladder[tier_idx + 1];
-        let blocked_by_decode = machine.max_decode_width > 0 && machine.max_decode_height > 0
+        let blocked_by_decode = machine.max_decode_width > 0
+            && machine.max_decode_height > 0
             && (parse_width_height(next).0 > machine.max_decode_width
                 || parse_width_height(next).1 > machine.max_decode_height);
         let blocked_by_downlink = downlink.is_finite() && downlink < resolution_min_downlink(next);
@@ -155,7 +169,11 @@ pub fn recommend_profile(machine: &MachineCapability, network: &NetworkCapabilit
         "fps {}: decode {} fps, downlink {} mbps",
         fps,
         machine.max_decode_fps,
-        if downlink.is_finite() { downlink.to_string() } else { "unknown".into() }
+        if downlink.is_finite() {
+            downlink.to_string()
+        } else {
+            "unknown".into()
+        }
     ));
 
     // 5. Codec: h264 for low tier; h265 when hardware HEVC decode confirmed; av1 never in this version.
@@ -172,7 +190,10 @@ pub fn recommend_profile(machine: &MachineCapability, network: &NetworkCapabilit
     ));
 
     // 6. Color: 10-bit only when supported, codec is not h264, and downlink is wide.
-    let color_quality = if machine.supports_10bit && codec != "h264" && (downlink.is_infinite() || downlink >= 25.0) {
+    let color_quality = if machine.supports_10bit
+        && codec != "h264"
+        && (downlink.is_infinite() || downlink >= 25.0)
+    {
         "10bit_420"
     } else {
         "8bit_420"
@@ -181,8 +202,16 @@ pub fn recommend_profile(machine: &MachineCapability, network: &NetworkCapabilit
     reasons.push(format!(
         "color {}: 10-bit {}, downlink {} mbps",
         color_quality,
-        if machine.supports_10bit { "supported" } else { "unsupported" },
-        if downlink.is_finite() { downlink.to_string() } else { "unknown".into() }
+        if machine.supports_10bit {
+            "supported"
+        } else {
+            "unsupported"
+        },
+        if downlink.is_finite() {
+            downlink.to_string()
+        } else {
+            "unknown".into()
+        }
     ));
 
     // 7. Fixed policy values.
@@ -198,10 +227,17 @@ pub fn recommend_profile(machine: &MachineCapability, network: &NetworkCapabilit
 /// Parses capability JSON, runs `recommend_profile`, and returns the
 /// proposed settings + reasons without writing anything to the store.
 pub(crate) fn recommend(params: &Value) -> Result<Value, String> {
-    let machine_value = params.get("machine").ok_or("settings.recommend requires machine")?;
-    let network_value = params.get("network").ok_or("settings.recommend requires network")?;
+    let machine_value = params
+        .get("machine")
+        .ok_or("settings.recommend requires machine")?;
+    let network_value = params
+        .get("network")
+        .ok_or("settings.recommend requires network")?;
 
-    let tier_str = machine_value.get("tier").and_then(Value::as_str).unwrap_or("low");
+    let tier_str = machine_value
+        .get("tier")
+        .and_then(Value::as_str)
+        .unwrap_or("low");
     let tier = match tier_str {
         "low" => Tier::Low,
         "medium" => Tier::Medium,
@@ -211,19 +247,49 @@ pub(crate) fn recommend(params: &Value) -> Result<Value, String> {
 
     let machine = MachineCapability {
         tier,
-        hardware_decode_hevc: machine_value.get("hardwareDecodeHevc").and_then(Value::as_bool).unwrap_or(false),
-        hardware_decode_av1: machine_value.get("hardwareDecodeAv1").and_then(Value::as_bool).unwrap_or(false),
-        max_decode_width: machine_value.get("maxDecodeWidth").and_then(Value::as_u64).unwrap_or(0) as u32,
-        max_decode_height: machine_value.get("maxDecodeHeight").and_then(Value::as_u64).unwrap_or(0) as u32,
-        max_decode_fps: machine_value.get("maxDecodeFps").and_then(Value::as_u64).unwrap_or(0) as u32,
-        supports_10bit: machine_value.get("supports10bit").and_then(Value::as_bool).unwrap_or(false),
+        hardware_decode_hevc: machine_value
+            .get("hardwareDecodeHevc")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        hardware_decode_av1: machine_value
+            .get("hardwareDecodeAv1")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        max_decode_width: machine_value
+            .get("maxDecodeWidth")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as u32,
+        max_decode_height: machine_value
+            .get("maxDecodeHeight")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as u32,
+        max_decode_fps: machine_value
+            .get("maxDecodeFps")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as u32,
+        supports_10bit: machine_value
+            .get("supports10bit")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
     };
 
     let network = NetworkCapability {
-        downlink_mbps: network_value.get("downlinkMbps").and_then(Value::as_f64).unwrap_or(0.0),
-        uplink_mbps: network_value.get("uplinkMbps").and_then(Value::as_f64).unwrap_or(0.0),
-        region_ping_ms: network_value.get("regionPingMs").and_then(Value::as_f64).unwrap_or(0.0),
-        loss_percent: network_value.get("lossPercent").and_then(Value::as_f64).unwrap_or(0.0),
+        downlink_mbps: network_value
+            .get("downlinkMbps")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0),
+        uplink_mbps: network_value
+            .get("uplinkMbps")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0),
+        region_ping_ms: network_value
+            .get("regionPingMs")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0),
+        loss_percent: network_value
+            .get("lossPercent")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0),
     };
 
     let rec = recommend_profile(&machine, &network);

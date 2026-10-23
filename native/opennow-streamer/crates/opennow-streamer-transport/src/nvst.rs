@@ -896,7 +896,8 @@ impl NvstFeedbackState {
 
     /// Filtered RTT in milliseconds.
     pub fn stable_ping_ms(&self, now: Instant) -> Option<f64> {
-        self.stable_rtt(now).map(|elapsed| elapsed.as_secs_f64() * 1000.0)
+        self.stable_rtt(now)
+            .map(|elapsed| elapsed.as_secs_f64() * 1000.0)
     }
 
     fn ping(&self, now: Instant) -> Option<Duration> {
@@ -14731,11 +14732,18 @@ mod tests {
         feedback.publish_ping(false, now, Duration::from_millis(20));
         assert_eq!(feedback.stable_rtt(now), Some(Duration::from_millis(20)));
         // A 200 ms spike must not move the stable RTT used for NACK timing
-        feedback.publish_ping(false, now + Duration::from_millis(1), Duration::from_millis(200));
+        feedback.publish_ping(
+            false,
+            now + Duration::from_millis(1),
+            Duration::from_millis(200),
+        );
         let after_spike = feedback.stable_rtt(now + Duration::from_millis(2));
         assert_eq!(after_spike, Some(Duration::from_millis(20)));
         // Current ping still reports the spike honestly
-        assert_eq!(feedback.ping_ms(now + Duration::from_millis(2)), Some(200.0));
+        assert_eq!(
+            feedback.ping_ms(now + Duration::from_millis(2)),
+            Some(200.0)
+        );
     }
 
     #[test]
@@ -14760,9 +14768,16 @@ mod tests {
         let feedback = config().feedback();
         let now = Instant::now();
         feedback.publish_ping(true, now, Duration::from_millis(100)); // video
-        feedback.publish_ping(false, now + Duration::from_millis(1), Duration::from_millis(25)); // bundle
+        feedback.publish_ping(
+            false,
+            now + Duration::from_millis(1),
+            Duration::from_millis(25),
+        ); // bundle
         feedback.update_ice_ping(None, &mut 0, now + Duration::from_millis(2)); // clears ice
-        assert_eq!(feedback.stable_rtt(now + Duration::from_millis(3)), Some(Duration::from_millis(25)));
+        assert_eq!(
+            feedback.stable_rtt(now + Duration::from_millis(3)),
+            Some(Duration::from_millis(25))
+        );
     }
 }
 

@@ -12,7 +12,12 @@ pub(crate) struct QueueDropReports {
     last_flush: Instant,
 }
 
-const LOCAL_STALL_MEDIA: [&'static str; 4] = ["d3d11-decode", "present", "video-decode", "video-presentation"];
+const LOCAL_STALL_MEDIA: [&'static str; 4] = [
+    "d3d11-decode",
+    "present",
+    "video-decode",
+    "video-presentation",
+];
 const LOCAL_STALL_THRESHOLD: usize = 3;
 
 impl QueueDropReports {
@@ -42,7 +47,11 @@ impl QueueDropReports {
     /// True when the local decode/present path has dropped enough frames this
     /// session to indicate the client machine (not the network) is the stall source.
     pub(crate) fn local_stall(&self) -> bool {
-        LOCAL_STALL_MEDIA.iter().map(|m| self.session.get(*m).copied().unwrap_or(0)).sum::<usize>() >= LOCAL_STALL_THRESHOLD
+        LOCAL_STALL_MEDIA
+            .iter()
+            .map(|m| self.session.get(*m).copied().unwrap_or(0))
+            .sum::<usize>()
+            >= LOCAL_STALL_THRESHOLD
     }
 
     pub(crate) fn flush(&mut self, output: &EventSender, now: Instant, final_flush: bool) {

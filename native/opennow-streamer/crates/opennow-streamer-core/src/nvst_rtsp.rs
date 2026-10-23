@@ -1579,7 +1579,12 @@ fn build_announce(context: &SessionContext, params: AnnounceParams<'_>) -> Strin
         "a=x-nv-vqos[0].bllFec.enable:0".to_owned(),
         format!(
             "a=x-nv-vqos[0].drc.enable:{}",
-            if context.settings.get("dynamicRateControl").and_then(Value::as_bool).unwrap_or(true) {
+            if context
+                .settings
+                .get("dynamicRateControl")
+                .and_then(Value::as_bool)
+                .unwrap_or(true)
+            {
                 1
             } else {
                 0
