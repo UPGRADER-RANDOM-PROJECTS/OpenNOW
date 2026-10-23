@@ -12,6 +12,17 @@ pub enum Tier {
     High,
 }
 
+impl std::fmt::Display for Tier {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Tier::Low => "low",
+            Tier::Medium => "medium",
+            Tier::High => "high",
+        };
+        formatter.write_str(name)
+    }
+}
+
 /// Hardware/decode capability of the current machine, as reported by the shell.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MachineCapability {
