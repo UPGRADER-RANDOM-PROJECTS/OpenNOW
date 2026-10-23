@@ -31,7 +31,7 @@ permissions:
 jobs:
   flatpak:
     name: Flatpak ${{ inputs.arch }}
-    runs-on: ${{ inputs.arch == 'aarch64' && 'blacksmith-8vcpu-ubuntu-2404-arm' || 'blacksmith-4vcpu-ubuntu-2404' }}
+    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
