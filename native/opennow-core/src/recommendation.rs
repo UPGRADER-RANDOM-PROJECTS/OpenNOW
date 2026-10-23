@@ -119,7 +119,7 @@ pub fn recommend_profile(
         let reduction = (network.loss_percent * 5.0).clamp(0.0, 50.0) / 100.0;
         bitrate = (bitrate as f64 * (1.0 - reduction)).round() as u32;
     }
-    bitrate = bitrate.max(BITRATE_FLOOR_MBPS).min(BITRATE_CEILING_MBPS);
+    bitrate = bitrate.clamp(BITRATE_FLOOR_MBPS, BITRATE_CEILING_MBPS);
 
     settings.push(("maxBitrateMbps".to_string(), json!(bitrate)));
     reasons.push(format!(
