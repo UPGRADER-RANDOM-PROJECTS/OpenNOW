@@ -120,14 +120,14 @@ class CIWorkflowTest(unittest.TestCase):
         self.assertIn("    runs-on: ${{ matrix.os }}\n", checks)
         self.assertIn("      fail-fast: false\n", checks)
         self.assertIn("uses: ./.github/actions/qt-unit-tests", checks)
-        self.assertIn("os: blacksmith-16vcpu-windows-2025", checks)
-        self.assertIn("os: blacksmith-6vcpu-macos-15", checks)
+        self.assertIn("os: windows-2025", checks)
+        self.assertIn("os: macos-15", checks)
         self.assertNotIn("continue-on-error", checks)
 
-    def test_linux_and_windows_checks_use_sixteen_core_runners(self):
+    def test_linux_and_windows_checks_use_github_hosted_runners(self):
         checks = jobs((WORKFLOWS / "qt-ci.yml").read_text())["checks"]
-        for label, runner in (("linux-x64", "blacksmith-16vcpu-ubuntu-2404"),
-                              ("windows-x64", "blacksmith-16vcpu-windows-2025")):
+        for label, runner in (("linux-x64", "ubuntu-latest"),
+                              ("windows-x64", "windows-2025")):
             with self.subTest(label=label):
                 entry = checks.split(f"          - label: {label}\n", 1)[1].split("          - label:", 1)[0]
                 self.assertIn(f"            os: {runner}\n", entry)
@@ -142,10 +142,12 @@ class CIWorkflowTest(unittest.TestCase):
 
     def test_linux_and_windows_packages_use_eight_core_build_parallelism(self):
         packages = jobs((WORKFLOWS / "qt-build.yml").read_text())["packages"]
-        for label in ("linux-x64", "linux-arm64", "windows-x64", "windows-arm64"):
+        expected = {"linux-x64": "ubuntu-latest", "linux-arm64": "ubuntu-24.04-arm",
+                    "windows-x64": "windows-2025", "windows-arm64": "windows-2025"}
+        for label, runner in expected.items():
             with self.subTest(label=label):
                 entry = packages.split(f"          - label: {label}\n", 1)[1].split("          - label:", 1)[0]
-                self.assertIn("            os: blacksmith-8vcpu-", entry)
+                self.assertIn(f"            os: {runner}\n", entry)
                 self.assertIn("            build-parallel: 8\n", entry)
 
     def test_manual_packages_overlap_checks_without_bypassing_publication_gates(self):
@@ -174,7 +176,7 @@ class CIWorkflowTest(unittest.TestCase):
         checks = (ROOT / ".github/actions/qt-unit-tests/action.yml").read_text()
         entries = jobs(contracts)
         self.assertEqual(set(entries), {"contracts"})
-        self.assertIn("runs-on: blacksmith-2vcpu-ubuntu-2404", entries["contracts"])
+        self.assertIn("runs-on: ubuntu-latest", entries["contracts"])
         for forbidden in ("matrix:", "cpack ", "linuxdeploy", "upload-artifact", "--release",
                           "uses: ./.github/workflows/qt-build.yml"):
             self.assertNotIn(forbidden, checks)
@@ -280,13 +282,13 @@ class CIWorkflowTest(unittest.TestCase):
         packages = (WORKFLOWS / "qt-build.yml").read_text()
         self.assertEqual(packages.count("--no-tests=error -LE interactive-desktop"), 2)
 
-    def test_general_purpose_runners_are_blacksmith(self):
+    def test_general_purpose_runners_are_github_hosted(self):
         for workflow in WORKFLOWS.glob("*.yml"):
             runners = re.findall(r"^\s+(?:runs-on|os|runner): (.+)$", workflow.read_text(), re.MULTILINE)
             for runner in runners:
                 with self.subTest(workflow=workflow.name, runner=runner):
                     self.assertTrue(
-                        runner.startswith(("blacksmith-", "${{")),
+                        runner.startswith(("ubuntu-", "windows-", "macos-", "${{")),
                     )
 
     def test_rust_caches_survive_job_renames_and_later_test_failures(self):
