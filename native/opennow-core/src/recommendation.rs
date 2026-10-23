@@ -117,20 +117,21 @@ pub fn recommend_profile(
     if network.loss_percent > 0.0 {
         // 1% estimated loss = 5% bitrate reduction, capped at 50% reduction.
         let reduction = (network.loss_percent * 5.0).clamp(0.0, 50.0) / 100.0;
-        bitrate = (bitrate as f64 * (1.0 - reduction)) as u32;
+        bitrate = (bitrate as f64 * (1.0 - reduction)).round() as u32;
     }
     bitrate = bitrate.max(BITRATE_FLOOR_MBPS).min(BITRATE_CEILING_MBPS);
 
     settings.push(("maxBitrateMbps".to_string(), json!(bitrate)));
     reasons.push(format!(
-        "bitrate {} Mbps: tier cap {} Mbps, {}",
+        "bitrate {} Mbps: tier cap {} Mbps, {}, loss {}%",
         bitrate,
         tier_bitrate_cap(machine.tier),
         if downlink.is_finite() {
             "downlink headroom 65%"
         } else {
             "downlink unknown, tier cap kept"
-        }
+        },
+        network.loss_percent
     ));
 
     // 3. Resolution: start at tier cap, step down the ladder while decode/downlink constrain.
@@ -158,8 +159,8 @@ pub fn recommend_profile(
         resolution, machine.tier
     ));
 
-    // 4. FPS: 60 when decode supports it and downlink is wide enough, else 30.
-    let fps = if machine.max_decode_fps >= 60 && (downlink.is_infinite() || downlink >= 8.0) {
+    // 4. FPS: 60 only when decode supports it and the link can carry a 60 fps stream.
+    let fps = if machine.max_decode_fps >= 60 && (downlink.is_infinite() || downlink >= 12.0) {
         60
     } else {
         30
@@ -185,9 +186,10 @@ pub fn recommend_profile(
     settings.push(("codec".to_string(), json!(codec)));
     settings.push(("fallbackCodec".to_string(), json!("h264")));
     reasons.push(format!(
-        "codec {}: hardware HEVC {}, fallback h264",
+        "codec {}: hardware HEVC {}",
         codec, machine.hardware_decode_hevc
     ));
+    reasons.push("fallbackCodec h264: every GeForce NOW session can decode h264".to_string());
 
     // 6. Color: 10-bit only when supported, codec is not h264, and downlink is wide.
     let color_quality = if machine.supports_10bit
@@ -218,7 +220,16 @@ pub fn recommend_profile(
     settings.push(("enableHdr".to_string(), json!(false)));
     settings.push(("upscaling".to_string(), json!("off")));
     settings.push(("saveBandwidth".to_string(), json!(true)));
-    reasons.push("HDR off, upscaling off, saveBandwidth on (prefer-FPS): reduces decoder load and gives the server headroom to adapt".to_string());
+    reasons
+        .push("enableHdr off: HDR costs decoder headroom the profile needs for frames".to_string());
+    reasons.push(
+        "upscaling off: scaling on the client adds latency without improving the stream"
+            .to_string(),
+    );
+    reasons.push(
+        "saveBandwidth on (prefer-FPS): the server trades resolution for a steadier frame rate"
+            .to_string(),
+    );
 
     Recommendation { settings, reasons }
 }
@@ -432,8 +443,19 @@ mod tests {
         let response = recommend(&params).unwrap();
         assert_eq!(response["settings"]["resolution"], json!("1920x1080"));
         assert_eq!(response["settings"]["codec"], json!("h265"));
-        assert_eq!(response["settings"]["maxBitrateMbps"], json!(13));
+        assert_eq!(response["settings"]["maxBitrateMbps"], json!(12));
         assert!(response["reasons"].as_array().unwrap().len() >= 8);
+    }
+
+    #[test]
+    fn packet_loss_lowers_the_bitrate_cap() {
+        let clean = recommend_profile(&high_machine(), &network(100.0, 50.0));
+        let mut lossy = network(100.0, 50.0);
+        lossy.loss_percent = 10.0;
+        let lossy_rec = recommend_profile(&high_machine(), &lossy);
+        let clean_bitrate = value(&clean, "maxBitrateMbps").as_u64().unwrap();
+        let lossy_bitrate = value(&lossy_rec, "maxBitrateMbps").as_u64().unwrap();
+        assert!(lossy_bitrate < clean_bitrate);
     }
 
     #[test]
